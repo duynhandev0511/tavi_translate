@@ -1,3 +1,7 @@
+# Yêu cầu Streamlit Cloud sử dụng Python phiên bản 3.11
+python==3.11
+
+# Các thư viện khác của bạn giữ nguyên
 streamlit
 transformers
 tensorflow
