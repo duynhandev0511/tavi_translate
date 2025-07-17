@@ -1,5 +1,4 @@
-python==3.11
 streamlit
 transformers
-tensorflow-cpu  # <--- THAY ĐỔI QUAN TRỌNG Ở ĐÂY
+tensorflow-cpu
 sentencepiece
