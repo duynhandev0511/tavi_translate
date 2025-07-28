@@ -5,7 +5,7 @@ from transformers import AutoTokenizer, TFAutoModelForSeq2SeqLM
 # ==============================================================================
 # THAY THẾ 'your-username/your-tf-tay-viet-model' BẰNG TÊN MODEL CỦA BẠN
 # ==============================================================================
-MODEL_NAME = "FiveC/tay-to-viet-v5"
+MODEL_NAME = "FiveC/tay-to-viet-v2"
 
 # --- Tối ưu hóa: Tải model một lần duy nhất ---
 # st.cache_resource là một decorator của Streamlit giúp lưu trữ tài nguyên nặng (như model)
