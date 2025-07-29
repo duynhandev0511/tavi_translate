@@ -1,15 +1,12 @@
 import streamlit as st
 import tensorflow as tf
 from transformers import AutoTokenizer, TFAutoModelForSeq2SeqLM
+import time
 
-# --- CẤU HÌNH VÀ TẢI MODEL ---
+# --- CẤU HÌNH VÀ TẢI MODEL (Không thay đổi) ---
 
-# ==============================================================================
-# THAY THẾ 'FiveC/tay-to-viet-v2' BẰNG TÊN MODEL CỦA BẠN NẾU CẦN
-# ==============================================================================
 MODEL_NAME = "FiveC/tay-to-viet-v2"
 
-# st.cache_resource giúp lưu trữ model vào cache, chỉ tải 1 lần duy nhất.
 @st.cache_resource
 def load_model():
     """Tải tokenizer và model từ Hugging Face."""
@@ -21,124 +18,206 @@ def load_model():
         st.error(f"Lỗi khi tải model: {e}. Vui lòng kiểm tra lại tên model '{MODEL_NAME}' và kết nối mạng.")
         return None, None
 
-# Tải model và tokenizer
 tokenizer, model = load_model()
 
-
 # --- KHỞI TẠO SESSION STATE ---
-# st.session_state giúp lưu trữ giá trị giữa các lần chạy lại của app
-# (ví dụ: khi người dùng nhấn nút).
-
-# Lưu trữ văn bản dịch gần nhất
 if 'translated_text' not in st.session_state:
     st.session_state.translated_text = ""
-# Lưu trữ lịch sử các bản dịch
-if 'history' not in st.session_state:
-    st.session_state.history = []
+if 'input_text' not in st.session_state:
+    st.session_state.input_text = ""
 
+# --- CSS ĐỂ THAY ĐỔI HOÀN TOÀN GIAO DIỆN ---
+# Đây là phần quan trọng nhất để có được giao diện giống app di động
+def load_css():
+    st.markdown("""
+        <style>
+            /* Màu nền tổng thể */
+            body {
+                background-color: #F0F2F6; /* Màu nền xám nhạt như trong ảnh */
+            }
 
-# --- XÂY DỰNG GIAO DIỆN NGƯỜI DÙNG (UI) THEO MẪU GOOGLE TRANSLATE ---
+            /* Ẩn header và footer mặc định của Streamlit */
+            #MainMenu, footer {
+                visibility: hidden;
+            }
+            
+            /* Tùy chỉnh khối container chính để giống màn hình điện thoại */
+            .block-container {
+                max-width: 420px; /* Chiều rộng của một màn hình điện thoại tiêu chuẩn */
+                padding-top: 2rem;
+                padding-bottom: 2rem;
+            }
 
-st.set_page_config(layout="wide", page_title="Dịch máy Tày - Việt", page_icon="🤖")
+            /* Tiêu đề "Translate" */
+            h1 {
+                text-align: center;
+                font-weight: bold;
+                color: #1a1a1a;
+            }
 
-# --- Tiêu đề ---
-st.markdown(
-    """
-    <style>
-        /* Tùy chỉnh CSS để giảm khoảng trống trên cùng */
-        .block-container {
-            padding-top: 2rem;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-st.title("🇻🇳 Dịch máy Tày - Việt 🇹")
-st.caption("Mô phỏng giao diện Google Translate với model Tày-Việt từ Hugging Face.")
+            /* Hộp chứa cho ô nhập liệu và kết quả */
+            .translate-box {
+                background-color: white;
+                border-radius: 1rem; /* Bo góc tròn */
+                padding: 1.2rem;
+                margin-bottom: 1rem;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05); /* Thêm bóng đổ nhẹ */
+            }
 
+            /* Tùy chỉnh ô text_area */
+            .stTextArea textarea {
+                border: none;
+                background-color: white;
+                min-height: 150px;
+                color: #1a1a1a;
+            }
+            .stTextArea textarea:focus {
+                outline: none !important;
+                box-shadow: none !important;
+                border: none !important;
+            }
 
-# --- Khu vực dịch chính ---
-col1, col2 = st.columns(2, gap="medium")
+            /* Phần hiển thị kết quả dịch */
+            .result-text {
+                min-height: 150px;
+                color: #1a1a1a;
+                font-size: 1rem;
+                line-height: 1.6;
+            }
+            
+            /* Các icon và đếm ký tự */
+            .bottom-bar {
+                color: #888;
+                font-size: 0.8rem;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-top: 0.5rem;
+            }
+            .bottom-bar .icons span {
+                margin-left: 1rem;
+                cursor: pointer;
+            }
 
-# Cột Nhập liệu (Bên trái)
-with col1:
-    st.subheader("Tiếng Tày")
+            /* Nút dịch */
+            .stButton>button {
+                border-radius: 0.75rem;
+                background-color: #007AFF; /* Màu xanh dương hiện đại */
+                color: white;
+                font-weight: bold;
+                height: 3rem;
+                width: 100%; /* Chiếm toàn bộ chiều rộng */
+            }
+            .stButton>button:hover {
+                background-color: #0056b3;
+                color: white;
+            }
+
+        </style>
+    """, unsafe_allow_html=True)
+
+# --- XÂY DỰNG GIAO DIỆN NGƯỜI DÙNG (UI) ---
+
+st.set_page_config(layout="centered", page_title="Dịch Tày-Việt")
+
+load_css()
+
+# Tiêu đề ứng dụng
+st.title("Translate")
+
+# Vùng chọn ngôn ngữ (mô phỏng)
+lang_col1, lang_col2, lang_col3 = st.columns([0.4, 0.2, 0.4])
+with lang_col1:
+    st.info("🇹 Tày (Tay)")
+with lang_col2:
+    st.markdown("<p style='text-align: center; font-size: 24px; margin-top: 5px;'>🔄</p>", unsafe_allow_html=True)
+with lang_col3:
+    st.success("🇻🇳 Vietnamese")
+
+st.write("") # Thêm một khoảng trống nhỏ
+
+# --- Hộp nhập liệu ---
+with st.container():
+    st.markdown('<div class="translate-box">', unsafe_allow_html=True)
     input_text = st.text_area(
-        "Nhập văn bản cần dịch...",
-        height=250,
-        key="input_text_area",
+        "Nhập văn bản cần dịch", 
+        key="input_text", 
         label_visibility="collapsed"
     )
     
     char_count = len(input_text)
-    st.caption(f"{char_count} / 5000 ký tự")
+    st.markdown(f"""
+        <div class="bottom-bar">
+            <span>{char_count} / 5.000</span>
+            <div class="icons">
+                <span>🔊</span>
+                <span>🎤</span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # Nút dịch
-    translate_button = st.button("Dịch sang Tiếng Việt", type="primary", use_container_width=True)
+# --- Hộp kết quả ---
+with st.container():
+    st.markdown('<div class="translate-box">', unsafe_allow_html=True)
+    
+    # Hiển thị spinner hoặc kết quả
+    if 'processing' in st.session_state and st.session_state.processing:
+        # Tạo hiệu ứng loading giả để UI mượt hơn
+        with st.spinner("Đang dịch..."):
+            time.sleep(1) # Chờ 1 giây để spinner hiển thị rõ
+    elif st.session_state.translated_text:
+         st.markdown(f'<div class="result-text">{st.session_state.translated_text}</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="result-text" style="color: #aaa;">Bản dịch sẽ xuất hiện ở đây...</div>', unsafe_allow_html=True)
+
+    char_count_result = len(st.session_state.translated_text)
+    st.markdown(f"""
+        <div class="bottom-bar">
+            <span>{char_count_result} / 5.000</span>
+            <div class="icons">
+                <span>🔊</span>
+                <span>📋</span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
-# Cột Kết quả (Bên phải)
-with col2:
-    st.subheader("Tiếng Việt")
-    # Sử dụng container với viền để tạo box kết quả
-    output_container = st.container(height=320, border=True)
-    with output_container:
-        # Hiển thị kết quả được lưu trong session_state
-        st.markdown(st.session_state.translated_text)
-
-
-# --- XỬ LÝ LOGIC DỊCH ---
-if translate_button:
-    # Chỉ thực hiện dịch nếu model đã tải và có văn bản nhập vào
+# --- Nút Dịch và Logic ---
+if st.button("Dịch", use_container_width=True):
     if model and tokenizer and input_text:
-        # Hiển thị spinner trong box kết quả để báo đang xử lý
-        with output_container:
-            with st.spinner("🧠 Đang dịch..."):
-                # 1. Tokenize câu đầu vào
-                inputs = tokenizer(input_text, return_tensors="tf", max_length=512, truncation=True)
-                
-                # 2. Dùng model để sinh ra câu dịch
-                output_sequences = model.generate(
-                    input_ids=inputs['input_ids'],
-                    attention_mask=inputs['attention_mask'],
-                    max_length=512,  # Tăng max_length cho câu dài
-                    num_beams=5,
-                    early_stopping=True
-                )
-                
-                # 3. Decode kết quả
-                result = tokenizer.decode(output_sequences[0], skip_special_tokens=True)
-                
-                # 4. Lưu kết quả vào session_state để hiển thị
-                st.session_state.translated_text = result
-                
-                # 5. Thêm bản dịch mới vào đầu danh sách lịch sử
-                st.session_state.history.insert(0, {
-                    "source": input_text,
-                    "translation": result
-                })
-                
-                # Chạy lại script để cập nhật UI với kết quả mới
-                st.rerun()
-                
+        # Đặt cờ đang xử lý để hiển thị spinner
+        st.session_state.processing = True
+        st.rerun() # Chạy lại để hiển thị spinner
+        
     elif not input_text:
         st.toast("🤔 Vui lòng nhập văn bản để dịch!")
     else:
-        st.error("Model chưa sẵn sàng. Vui lòng kiểm tra lại lỗi ở trên và làm mới trang.")
+        st.error("Model chưa sẵn sàng. Vui lòng làm mới trang.")
 
-
-# --- Khu vực Lịch sử dịch ---
-st.divider()
-st.header("Lịch sử")
-
-if not st.session_state.history:
-    st.info("Chưa có bản dịch nào trong lịch sử.")
-else:
-    # Hiển thị 5 bản dịch gần nhất
-    for i, translation_item in enumerate(st.session_state.history[:5]):
-        with st.container(border=True):
-            st.text("Tày (Nguồn)")
-            st.info(translation_item["source"])
-
-            st.text("Việt (Dịch)")
-            st.success(translation_item["translation"])
+# Logic dịch thực sự được chạy sau khi rerun
+if 'processing' in st.session_state and st.session_state.processing:
+    # 1. Tokenize
+    inputs = tokenizer(st.session_state.input_text, return_tensors="tf", max_length=512, truncation=True)
+    
+    # 2. Generate
+    output_sequences = model.generate(
+        input_ids=inputs['input_ids'],
+        attention_mask=inputs['attention_mask'],
+        max_length=512,
+        num_beams=5,
+        early_stopping=True
+    )
+    
+    # 3. Decode
+    result = tokenizer.decode(output_sequences[0], skip_special_tokens=True)
+    
+    # 4. Lưu kết quả và tắt cờ xử lý
+    st.session_state.translated_text = result
+    st.session_state.processing = False
+    
+    # Chạy lại lần cuối để hiển thị kết quả
+    st.rerun()
