@@ -5,7 +5,6 @@ from transformers import AutoTokenizer, TFAutoModelForSeq2SeqLM
 MODEL_NAME = "FiveC/tay-to-viet-v2"
 
 def load_model():
-"""Tải tokenizer và model từ Hugging Face."""
 try:
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = TFAutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
