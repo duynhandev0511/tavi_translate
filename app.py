@@ -1,9 +1,7 @@
 import streamlit as st
 import tensorflow as tf
 from transformers import AutoTokenizer, TFAutoModelForSeq2SeqLM
-==============================================================================
-THAY THẾ 'your-username/your-tf-tay-viet-model' BẰNG TÊN MODEL CỦA BẠN
-==============================================================================
+
 MODEL_NAME = "FiveC/tay-to-viet-v2"
 
 def load_model():
